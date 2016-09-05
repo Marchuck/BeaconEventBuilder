@@ -1,5 +1,6 @@
 package pl.marchuck.beaconbuilder;
 
+import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothAdapter;
 import android.os.Bundle;
 import android.support.v4.app.FragmentActivity;
@@ -17,9 +18,12 @@ public class MainActivity extends FragmentActivity {
 
     private TextView t1;
 
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        assert false;
         setContentView(R.layout.activity_main);
         t1 = (TextView) findViewById(R.id.a1);
 

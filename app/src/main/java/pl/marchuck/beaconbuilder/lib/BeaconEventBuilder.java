@@ -1,7 +1,6 @@
 package pl.marchuck.beaconbuilder.lib;
 
 import android.content.Context;
-import android.support.annotation.Nullable;
 import android.util.Log;
 
 import com.polidea.rxandroidble.RxBleClient;
@@ -10,7 +9,6 @@ import com.polidea.rxandroidble.internal.RxBleLog;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import pl.marchuck.beaconbuilder.BeaconRepository;
 import pl.marchuck.beaconbuilder.ble.IBeaconData;
@@ -67,7 +65,7 @@ public class BeaconEventBuilder {
         return this;
     }
 
-    private AtomicBoolean atomicBoolean = new AtomicBoolean(false);
+//    private AtomicBoolean atomicBoolean = new AtomicBoolean(false);
 
     public void build(Context context) {
         RxBleClient client = RxBleClient.create(context);
@@ -81,44 +79,48 @@ public class BeaconEventBuilder {
                         return IBeaconData.asIBeacon(result);
                     }
                 })
-                .map(new Func1<IBeaconData, BeaconAction>() {
-                    @Override
-                    public BeaconAction call(IBeaconData iBeaconData) {
-                        if (atomicBoolean.get()) return null;
-                        atomicBoolean.set(true);
-                        synchronized (actions) {
-
-                            Log.d(TAG, "new beacon is: " + iBeaconData.getReadableDistance()
-                                    + " :" + iBeaconData.getMac());
-                            if (actions.isEmpty()) {
-                                atomicBoolean.set(false);
-                                return BeaconAction.end();
-                            }
-                            Log.d(TAG, "current queue: " + printQueue(actions));
-                            int index = indexOfNextBeacon(iBeaconData);
-                            if (index != 0) {
-                                Log.e(TAG, "index: " + index + ", expected: " + 0);
-                                atomicBoolean.set(false);
-                                return null;
-                            }
-                            BeaconAction action = actions.get(index);
-//                            if (iBeaconData.getCalculatedDistance() > action.distance) {
+//                .map(new Func1<IBeaconData, BeaconAction>() {
+//                    @Override
+//                    public BeaconAction call(IBeaconData iBeaconData) {
+//                        if (atomicBoolean.get()) return null;
+//                        atomicBoolean.set(true);
+//                        synchronized (actions) {
+//                            Log.d(TAG, "new beacon is: " + iBeaconData.getReadableDistance()
+//                                    + " :" + iBeaconData.getMac());
+//                            if (actions.isEmpty()) {
+//                                atomicBoolean.set(false);
+//                                return BeaconAction.end();
+//                            }
+//                            Log.d(TAG, "current queue: " + printQueue(actions));
+//                            int index = indexOfNextBeacon(iBeaconData);
+//                            if (index != 0) {
+//                                Log.e(TAG, "index: " + index + ", expected: " + 0);
+//                                atomicBoolean.set(false);
 //                                return null;
 //                            }
-                            actions.remove(action);
-                            Log.e(TAG, "ATOMIC INTEGER VALUE: ");
-                            atomicBoolean.set(false);
-
-                            return action;
-                        }
-                    }
-                })
+//                            BeaconAction action = actions.get(index);
+////                            if (iBeaconData.getCalculatedDistance() > action.distance) {
+////                                return null;
+////                            }
+//                            actions.remove(action);
+//                            Log.e(TAG, "ATOMIC INTEGER VALUE: ");
+//                            atomicBoolean.set(false);
+//
+//                            return action;
+//                        }
+//                    }
+//                })
                 //.throttleFirst(1000, TimeUnit.MILLISECONDS)// NOT USE THIS!
                 .subscribeOn(Schedulers.trampoline())
                 .observeOn(AndroidSchedulers.mainThread())
                 .doOnCompleted(onEndAction)
                 .doOnError(onErrAction)
-                .subscribe(new Subscriber<BeaconAction>() {
+                .subscribe(new Subscriber<IBeaconData>() {
+                    @Override
+                    public void onStart() {
+                        request(1);
+                    }
+
                     @Override
                     public void onCompleted() {
                         Log.d(TAG, "onCompleted: ");
@@ -130,8 +132,35 @@ public class BeaconEventBuilder {
                     }
 
                     @Override
-                    public void onNext(@Nullable BeaconAction beaconAction) {
+                    public void onNext(IBeaconData iBeaconData) {
+                        if (iBeaconData == null) {
+                            request(1);
+                            return;
+                        }
 
+                        BeaconAction beaconAction = null;
+                        synchronized (actions) {
+
+                            Log.d(TAG, "new beacon is: " + iBeaconData.getReadableDistance() + " :" + iBeaconData.getMac());
+                            if (actions.isEmpty()) {
+                                onCompleted();
+                                return;
+                            }
+                            Log.d(TAG, "current queue: " + printQueue(actions));
+                            int index = indexOfNextBeacon(iBeaconData);
+                            if (index == -1) {
+                                request(1);
+                                return;
+                            }
+                            BeaconAction action = actions.get(index);
+//                            if (iBeaconData.getCalculatedDistance() > action.distance) {
+//                                return null;
+//                            }
+                            actions.remove(action);
+                            Log.e(TAG, "ATOMIC INTEGER VALUE: ");
+
+                            beaconAction = action;
+                        }
                         if (beaconAction == null) return;
 
                         Log.d(TAG, "onNext: " + beaconAction.mac);
@@ -143,6 +172,7 @@ public class BeaconEventBuilder {
                             Log.e(TAG, "onNext: ACTION CALLED!");
                             beaconAction.actionWhenEnter.call();
                         }
+                        request(1);
                     }
                 });
     }
